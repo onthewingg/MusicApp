@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">MusicApp</string>
+    <string name="favorite_toggle">Toggle favorite</string>
+    <string name="playlists">Playlist</string>
+    <string name="add_playlist">Add Playlist</string>
+    <string name="remove_song">Remove Song</string>
+</resources>

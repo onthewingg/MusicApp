@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools ="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#EFEFEF"
+    android:padding="10dp">
+
+    <!-- Music icon -->
+    <ImageView
+        android:id="@+id/icon_view"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_centerVertical="true"
+        android:src="@drawable/music_icon" />
+
+    <!-- Remove button -->
+    <ImageButton
+        android:id="@+id/remove_btn"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_alignParentEnd="true"
+        android:layout_centerVertical="true"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/remove_song"
+        android:src="@drawable/baseline_remove_circle_outline_24"
+        android:tint="@android:color/darker_gray" />
+
+    <!-- Song title, filling the space between icon and remove button -->
+    <TextView
+        android:id="@+id/music_title_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_toEndOf="@id/icon_view"
+        android:layout_toStartOf="@id/remove_btn"
+        android:layout_centerVertical="true"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/black"
+        tools:text="Track Name" />
+
+</RelativeLayout>
