@@ -13,6 +13,7 @@ import android.widget.Toast;
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SearchView;          // ← NEW
 import androidx.appcompat.widget.Toolbar;
 import androidx.lifecycle.Observer;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -32,126 +33,137 @@ import java.util.concurrent.Executors;
 
 /**
  * Screen that lets the user pick songs to add to a given playlist.
- *
- * Behaviour:
- *  • Lists every audio track found on the device, using the same scan logic as {@link MainActivity}.
- *  • Songs already inside the target playlist appear greyed-out.
- *  • Tapping a song that is not yet in the playlist adds it via {@link MusicDao#addToPlaylist}.
+ * • Lists every audio track found on the device.
+ * • Songs already in the playlist appear dimmed.
+ * • Tap to add; live SearchView filters the list.
  */
 public class AddToPlaylistActivity extends AppCompatActivity {
 
-    private long           playlistId;
-    private MusicDao       dao;
-    private RecyclerView   rv;
-    private SongsAdapter   adapter;
+    private long         playlistId;
+    private MusicDao     dao;
+    private RecyclerView rv;
+    private SongsAdapter adapter;
+    private SearchView   searchView;               // NEW
 
-    // master list of all songs on device
-    private final List<AudioModel> allSongs = new ArrayList<>();
-    // paths that are ALREADY part of the playlist – updated via Room observer
-    private final Set<String>      songsInPlaylist = new HashSet<>();
+    /** master list of ALL songs on device            */ private final List<AudioModel> allSongs        = new ArrayList<>();
+    /** subset shown after filtering (adapter uses)   */ private final List<AudioModel> filteredSongs  = new ArrayList<>();
+    /** paths that are already part of the playlist   */ private final Set<String>      songsInPlaylist = new HashSet<>();
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    // ═══════════════════════════════════════════════════ onCreate
+    @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_add_to_playlist);
 
-        // ═════════════ Toolbar ═════════════
-        Toolbar toolbar = findViewById(R.id.toolbar_add_songs);
-        setSupportActionBar(toolbar);
+        // toolbar
+        Toolbar tb = findViewById(R.id.toolbar_add_songs);
+        setSupportActionBar(tb);
         if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        toolbar.setNavigationOnClickListener(v -> finish());
+        tb.setNavigationOnClickListener(v -> finish());
 
-        // ═════════════ DAO / playlistId ═════════════
         playlistId = getIntent().getLongExtra("playlistId", -1);
         dao        = MusicDatabase.getInstance(getApplicationContext()).musicDao();
 
-        // ═════════════ RecyclerView ═════════════
-        rv = findViewById(R.id.recycler_all_songs);
+        // views
+        searchView = findViewById(R.id.search_view_add);      // NEW
+        rv         = findViewById(R.id.recycler_all_songs);
         rv.setLayoutManager(new LinearLayoutManager(this));
+
         adapter = new SongsAdapter();
         rv.setAdapter(adapter);
 
+        hookSearchView();           // NEW
         loadSongsFromStorage();
         observeExistingPlaylistEntries();
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Room observer – whenever playlist content changes we update UI
-    // ────────────────────────────────────────────────────────────────
-    private void observeExistingPlaylistEntries() {
-        dao.getPlaylistWithSongs(playlistId).observe(this, (Observer<PlaylistWithSongs>) data -> {
-            songsInPlaylist.clear();
-            if (data != null) {
-                for (AudioModel m : data.songs) songsInPlaylist.add(m.getPath());
+    // ═══════════════════════════════════════════════════ live search
+    private void hookSearchView() {
+        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override public boolean onQueryTextSubmit(String q) {
+                filterSongs(q);
+                return true;
             }
-            adapter.notifyDataSetChanged();
+            @Override public boolean onQueryTextChange(String q) {
+                filterSongs(q);
+                return true;
+            }
         });
     }
-
-    // ────────────────────────────────────────────────────────────────
-    // MediaStore scan – identical to MainActivity.loadMusic()
-    // ────────────────────────────────────────────────────────────────
-    private void loadSongsFromStorage() {
-        ContentResolver resolver = getContentResolver();
-
-        String[] projection = {
-                MediaStore.Audio.Media.TITLE,
-                MediaStore.Audio.Media.DATA,
-                MediaStore.Audio.Media.DURATION
-        };
-        String selection = MediaStore.Audio.Media.IS_MUSIC + " != 0";
-
-        try (Cursor cursor = resolver.query(
-                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                selection,
-                null,
-                null
-        )) {
-            if (cursor == null) return;
-            while (cursor.moveToNext()) {
-                String title    = cursor.getString(0);
-                String path     = cursor.getString(1);
-                String duration = cursor.getString(2);
-                if (new File(path).exists()) {
-                    allSongs.add(new AudioModel(path, title, duration));
-                }
+    private void filterSongs(@NonNull String query) {
+        filteredSongs.clear();
+        String q = query.toLowerCase().trim();
+        if (q.isEmpty()) {
+            filteredSongs.addAll(allSongs);
+        } else {
+            for (AudioModel s : allSongs) {
+                if (s.getTitle().toLowerCase().contains(q)) filteredSongs.add(s);
             }
         }
         adapter.notifyDataSetChanged();
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // RecyclerView adapter
-    // ────────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════ Room observer
+    private void observeExistingPlaylistEntries() {
+        dao.getPlaylistWithSongs(playlistId).observe(this,
+                (Observer<PlaylistWithSongs>) data -> {
+                    songsInPlaylist.clear();
+                    if (data != null)
+                        for (AudioModel m : data.songs) songsInPlaylist.add(m.getPath());
+                    adapter.notifyDataSetChanged();
+                });
+    }
+
+    // ═══════════════════════════════════════════════════ MediaStore scan
+    private void loadSongsFromStorage() {
+        ContentResolver resolver = getContentResolver();
+        String[] proj = { MediaStore.Audio.Media.TITLE,
+                MediaStore.Audio.Media.DATA,
+                MediaStore.Audio.Media.DURATION };
+        String sel = MediaStore.Audio.Media.IS_MUSIC + " != 0";
+
+        try (Cursor c = resolver.query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                proj, sel, null, null)) {
+            if (c == null) return;
+            while (c.moveToNext()) {
+                String title = c.getString(0);
+                String path  = c.getString(1);
+                String dur   = c.getString(2);
+                if (new File(path).exists())
+                    allSongs.add(new AudioModel(path, title, dur));
+            }
+        }
+        filteredSongs.clear();
+        filteredSongs.addAll(allSongs);    // initial state = full list
+        adapter.notifyDataSetChanged();
+    }
+
+    // ═══════════════════════════════════════════════════ RecyclerView adapter
     private class SongsAdapter extends RecyclerView.Adapter<SongsAdapter.VH> {
+
         @NonNull @Override
-        public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        public VH onCreateViewHolder(@NonNull ViewGroup parent, int vt) {
             View v = LayoutInflater.from(parent.getContext())
                     .inflate(R.layout.recycler_item, parent, false);
             return new VH(v);
         }
 
         @Override
-        public void onBindViewHolder(@NonNull VH holder, int position) {
-            AudioModel song = allSongs.get(position);
-            holder.title.setText(song.getTitle());
+        public void onBindViewHolder(@NonNull VH h, int pos) {
+            AudioModel song = filteredSongs.get(pos);
+            h.title.setText(song.getTitle());
 
             boolean alreadyAdded = songsInPlaylist.contains(song.getPath());
-            holder.itemView.setAlpha(alreadyAdded ? 0.3f : 1f);
-            holder.itemView.setOnClickListener(v -> {
+            h.itemView.setAlpha(alreadyAdded ? 0.3f : 1f);
+            h.itemView.setOnClickListener(v -> {
                 if (alreadyAdded) {
                     Toast.makeText(AddToPlaylistActivity.this,
                             "Song already in playlist", Toast.LENGTH_SHORT).show();
-                } else {
-                    addSongToPlaylist(song);
-                }
+                } else addSongToPlaylist(song);
             });
         }
 
-        @Override
-        public int getItemCount() { return allSongs.size(); }
+        @Override public int getItemCount() { return filteredSongs.size(); }
 
         class VH extends RecyclerView.ViewHolder {
             TextView title;
@@ -162,21 +174,16 @@ public class AddToPlaylistActivity extends AppCompatActivity {
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // DB insert helper
-    // ────────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════ insert helper
     private void addSongToPlaylist(@NonNull AudioModel song) {
         Executors.newSingleThreadExecutor().execute(() -> {
-
-            dao.insertSong(song);                                           // NEW
-            dao.addToPlaylist(new PlaylistSongCrossRef(playlistId,          // NEW
-                    song.getPath()));    // NEW
+            dao.insertSong(song);
+            dao.addToPlaylist(new PlaylistSongCrossRef(playlistId, song.getPath()));
 
             runOnUiThread(() -> {
                 songsInPlaylist.add(song.getPath());
                 adapter.notifyDataSetChanged();
-                Toast.makeText(AddToPlaylistActivity.this,
-                        "Added to playlist", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Added to playlist", Toast.LENGTH_SHORT).show();
             });
         });
     }

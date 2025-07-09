@@ -44,4 +44,7 @@ public interface MusicDao {
     @Transaction
     @Query("SELECT * FROM Playlist WHERE id = :plId")
     LiveData<PlaylistWithSongs> getPlaylistWithSongs(long plId);
+
+    @Query("DELETE FROM PlaylistSongCrossRef WHERE playlistId = :plId")
+    void removeAllSongsFromPlaylist(long plId);          // NEW
 }

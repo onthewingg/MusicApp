@@ -36,6 +36,9 @@ public class PlaylistsAdapter
         notifyDataSetChanged();
     }
 
+    /** ItemTouchHelper needs this */
+    public Playlist getPlaylistAt(int pos) { return items.get(pos); }   // ← NEW
+
     @NonNull
     @Override
     public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
